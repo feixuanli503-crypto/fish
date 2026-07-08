@@ -1,0 +1,22 @@
+{
+  "name": "fish-stealth-desktop",
+  "version": "0.1.0",
+  "description": "一款简约苹果风的摸鱼桌面端原型。",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "keywords": [
+    "electron",
+    "desktop",
+    "stealth",
+    "reader",
+    "browser"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}

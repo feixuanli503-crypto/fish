@@ -7,121 +7,131 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="system-toolbar" aria-label="窗口工具区">
-      <div class="toolbar-left">
-        <button class="tool-button" id="toggleSidebarButton" type="button" aria-label="收起左侧列表" title="收起左侧列表">
-          <svg viewBox="0 0 18 18" aria-hidden="true">
-            <rect x="3" y="4" width="12" height="10" rx="2"></rect>
-            <path d="M7 4v10"></path>
-          </svg>
-        </button>
-        <button class="tool-button" id="settingsButton" type="button" aria-label="打开设置" title="设置">
-          <svg viewBox="0 0 18 18" aria-hidden="true">
-            <circle cx="9" cy="9" r="2.3"></circle>
-            <path d="M9 2.7v2M9 13.3v2M4.6 4.6 6 6M12 12l1.4 1.4M2.7 9h2M13.3 9h2M4.6 13.4 6 12M12 6l1.4-1.4"></path>
-          </svg>
-        </button>
-      </div>
+    <div class="window-frame">
+      <header class="system-toolbar" aria-label="窗口工具栏">
+        <div class="toolbar-left">
+          <button class="tool-button" id="toggleSidebarButton" type="button" aria-label="收起左侧列表" title="收起左侧列表">
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <rect x="3" y="4" width="12" height="10" rx="2"></rect>
+              <path d="M7 4v10"></path>
+            </svg>
+          </button>
+          <button class="tool-button" id="settingsButton" type="button" aria-label="打开设置" title="设置">
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <circle cx="9" cy="9" r="2.3"></circle>
+              <path d="M9 2.7v2M9 13.3v2M4.6 4.6 6 6M12 12l1.4 1.4M2.7 9h2M13.3 9h2M4.6 13.4 6 12M12 6l1.4-1.4"></path>
+            </svg>
+          </button>
+        </div>
 
-      <div class="toolbar-right">
-        <button class="window-button" id="minimizeButton" type="button" aria-label="最小化" title="最小化">
-          <svg viewBox="0 0 18 18" aria-hidden="true">
-            <path d="M4 10h10"></path>
-          </svg>
-        </button>
-        <button class="window-button" id="maximizeButton" type="button" aria-label="最大化" title="最大化">
-          <svg id="maximizeIcon" viewBox="0 0 18 18" aria-hidden="true">
-            <rect x="4.5" y="4.5" width="9" height="9" rx="1.8"></rect>
-          </svg>
-        </button>
-        <button class="window-button close" id="closeButton" type="button" aria-label="退出" title="退出">
-          <svg viewBox="0 0 18 18" aria-hidden="true">
-            <path d="m5 5 8 8M13 5l-8 8"></path>
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <div class="app-shell">
-      <aside class="sidebar" aria-label="摸鱼助手导航">
-        <nav class="quick-links" aria-label="快捷入口">
-          <button class="quick-link" data-url="https://www.douyin.com" type="button">
-            <span class="icon">D</span>
-            <span class="quick-copy">
-              <strong>抖音</strong>
-              <small>短视频模式</small>
-            </span>
-          </button>
-          <button class="quick-link" data-url="https://www.xiaohongshu.com" type="button">
-            <span class="icon">R</span>
-            <span class="quick-copy">
-              <strong>小红书</strong>
-              <small>灵感瀑布流</small>
-            </span>
-          </button>
-          <button class="quick-link" data-url="https://www.qidian.com" type="button">
-            <span class="icon">N</span>
-            <span class="quick-copy">
-              <strong>小说</strong>
-              <small>沉浸阅读</small>
-            </span>
-          </button>
-          <button class="quick-link" data-url="https://www.baidu.com" type="button">
-            <span class="icon">W</span>
-            <span class="quick-copy">
-              <strong>上网</strong>
-              <small>搜索与浏览</small>
-            </span>
-          </button>
+        <nav class="mini-quick-tabs" id="miniQuickTabs" aria-label="小窗快捷操作">
+          <button class="mini-quick-tab" data-url="https://www.douyin.com" type="button">抖音</button>
+          <button class="mini-quick-tab" data-url="https://www.xiaohongshu.com" type="button">小红书</button>
+          <button class="mini-quick-tab" data-url="https://www.qidian.com" type="button">小说</button>
+          <button class="mini-quick-tab" data-url="https://www.baidu.com" type="button">上网</button>
         </nav>
 
-        <section class="stealth-panel" aria-label="隐身控制">
-          <div class="opacity-row">
-            <span class="panel-label">窗口透明度</span>
-            <strong id="opacityValue">92%</strong>
-          </div>
-          <input id="opacitySlider" type="range" min="35" max="100" value="92" aria-label="窗口透明度" />
-          <p id="shortcutHelp">隐藏快捷键：Ctrl + Alt + Q；恢复：Ctrl + Alt + F；退出：Ctrl + Alt + X。</p>
-        </section>
-      </aside>
+        <div class="toolbar-right">
+          <button class="window-button" id="minimizeButton" type="button" aria-label="最小化" title="最小化">
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <path d="M4 10h10"></path>
+            </svg>
+          </button>
+          <button class="window-button" id="maximizeButton" type="button" aria-label="最大化" title="最大化">
+            <svg id="maximizeIcon" viewBox="0 0 18 18" aria-hidden="true">
+              <rect x="4.5" y="4.5" width="9" height="9" rx="1.8"></rect>
+            </svg>
+          </button>
+          <button class="window-button close" id="closeButton" type="button" aria-label="退出" title="退出">
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <path d="m5 5 8 8M13 5l-8 8"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
 
-      <main class="workspace">
-        <section class="hero-panel" id="landingPanel">
-          <div>
-            <span class="eyebrow">今日状态</span>
-            <h2 id="todayTitle">轻松一点，今天也顺顺利利。</h2>
-            <p id="todayBlessing">愿你今天摸鱼有分寸，忙碌有回报，心情保持晴朗。</p>
-          </div>
-          <div class="today-meta" aria-label="今日信息">
-            <span id="todayDate">--</span>
-            <strong>今日天气</strong>
-            <small>允许定位后可显示本地天气</small>
-          </div>
-        </section>
+      <div class="app-shell">
+        <aside class="sidebar" aria-label="摸鱼助手导航">
+          <nav class="quick-links" aria-label="快捷入口">
+            <button class="quick-link" data-url="https://www.douyin.com" type="button">
+              <span class="icon">D</span>
+              <span class="quick-copy">
+                <strong>抖音</strong>
+                <small>正常打开后可切小窗</small>
+              </span>
+            </button>
+            <button class="quick-link" data-url="https://www.xiaohongshu.com" type="button">
+              <span class="icon">R</span>
+              <span class="quick-copy">
+                <strong>小红书</strong>
+                <small>灵感瀑布流</small>
+              </span>
+            </button>
+            <button class="quick-link" data-url="https://www.qidian.com" type="button">
+              <span class="icon">N</span>
+              <span class="quick-copy">
+                <strong>小说</strong>
+                <small>沉浸阅读</small>
+              </span>
+            </button>
+            <button class="quick-link" data-url="https://www.baidu.com" type="button">
+              <span class="icon">W</span>
+              <span class="quick-copy">
+                <strong>上网</strong>
+                <small>搜索与浏览</small>
+              </span>
+            </button>
+          </nav>
 
-        <section class="browser-card is-home" id="browserCard">
-          <div class="browser-toolbar">
-            <span id="pageTitle">首页</span>
-          </div>
-          <section class="home-card" id="homeCard" aria-label="首页">
-            <div class="home-weather">
-              <span class="eyebrow">欢迎回来</span>
-              <h3 id="homeGreeting">下午好，先看看今天，再决定去哪儿。</h3>
-              <p id="homeSummary">你可以从左侧选择入口，或直接打开常用网站。</p>
+          <section class="stealth-panel" aria-label="隐身控制">
+            <div class="opacity-row">
+              <span class="panel-label">窗口透明度</span>
+              <strong id="opacityValue">92%</strong>
             </div>
-            <div class="home-actions" aria-label="快捷操作">
-              <button type="button" data-url="https://www.douyin.com">打开抖音</button>
-              <button type="button" data-url="https://www.xiaohongshu.com">看看小红书</button>
-              <button type="button" data-url="https://www.baidu.com">搜索一下</button>
+            <input id="opacitySlider" type="range" min="35" max="100" value="92" aria-label="窗口透明度" />
+            <p id="shortcutHelp">隐藏：Ctrl+1；显示：Ctrl+2；小窗：Ctrl+3；退出：Ctrl+Alt+X。</p>
+          </section>
+        </aside>
+
+        <main class="workspace">
+          <section class="hero-panel" id="landingPanel">
+            <div>
+              <span class="eyebrow">今日状态</span>
+              <h2 id="todayTitle">轻松一点，今天也顺顺利利。</h2>
+              <p id="todayBlessing">愿你今天摸鱼有分寸，忙碌有回报，心情保持晴朗。</p>
+            </div>
+            <div class="today-meta" aria-label="今日信息">
+              <span id="todayDate">--</span>
+              <small>保持轻量、安静、随时隐藏</small>
             </div>
           </section>
-          <webview id="contentView" allowpopups partition="persist:fishdesk"></webview>
-          <div class="fallback" id="fallbackNotice" hidden>
-            <strong>这个网站可能限制内嵌显示</strong>
-            <p>可以尝试外部打开，或换一个网页、移动站点、搜索关键词。</p>
-          </div>
-        </section>
-      </main>
+
+          <section class="browser-card is-home" id="browserCard">
+            <div class="browser-toolbar">
+              <span id="pageTitle">首页</span>
+              <div class="browser-actions">
+                <label class="mini-opacity-control" for="miniOpacitySlider">
+                  <span>透明度</span>
+                  <input id="miniOpacitySlider" type="range" min="35" max="100" value="92" aria-label="小窗透明度" />
+                </label>
+                <button class="mini-mode-button" id="miniModeButton" type="button" aria-pressed="false">小窗模式</button>
+              </div>
+            </div>
+            <section class="home-card" id="homeCard" aria-label="首页">
+              <div class="home-weather">
+                <span class="eyebrow">欢迎回来</span>
+                <h3 id="homeGreeting">下午好，先看看今天，再决定去哪儿。</h3>
+                <p id="homeSummary">你可以从左侧选择入口。打开抖音后，点“小窗模式”即可把窗口和网页内容一起缩小。</p>
+              </div>
+            </section>
+            <webview id="contentView" allowpopups partition="persist:fishdesk"></webview>
+            <div class="fallback" id="fallbackNotice" hidden>
+              <strong>这个网站可能限制内嵌显示</strong>
+              <p>可以尝试外部打开，或换一个网页、移动站点、搜索关键词。</p>
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
 
     <section class="settings-panel" id="settingsPanel" role="dialog" aria-label="设置界面" hidden>
@@ -141,15 +151,19 @@
             <input id="shortcutHide" type="text" spellcheck="false" />
           </label>
           <label>
-            <span>恢复窗口</span>
+            <span>显示窗口</span>
             <input id="shortcutShow" type="text" spellcheck="false" />
+          </label>
+          <label>
+            <span>小窗切换</span>
+            <input id="shortcutMini" type="text" spellcheck="false" />
           </label>
           <label>
             <span>退出软件</span>
             <input id="shortcutQuit" type="text" spellcheck="false" />
           </label>
           <button class="primary-action" id="saveShortcutsButton" type="button">保存快捷键</button>
-          <p class="settings-note" id="settingsStatus">使用 Electron 快捷键格式，例如 Ctrl+Alt+Q。</p>
+          <p class="settings-note" id="settingsStatus">默认隐藏 Ctrl+1，显示 Ctrl+2，小窗 Ctrl+3。</p>
         </section>
 
         <section class="settings-card">
@@ -173,7 +187,7 @@
             <button type="button" data-theme="light">浅色</button>
             <button type="button" data-theme="dark">深色</button>
           </div>
-          <p class="settings-note">深色主题会同步调整卡片、边框和文字对比。</p>
+          <p class="settings-note">浅色主题使用天空蓝淡渐变，线条保持轻量分区。</p>
         </section>
       </div>
     </section>

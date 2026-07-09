@@ -3,6 +3,7 @@ const browserCard = document.querySelector("#browserCard");
 const homeCard = document.querySelector("#homeCard");
 const pageTitle = document.querySelector("#pageTitle");
 const opacitySlider = document.querySelector("#opacitySlider");
+const miniOpacitySlider = document.querySelector("#miniOpacitySlider");
 const opacityValue = document.querySelector("#opacityValue");
 const shortcutHelp = document.querySelector("#shortcutHelp");
 const fallbackNotice = document.querySelector("#fallbackNotice");
@@ -18,15 +19,28 @@ const minimizeButton = document.querySelector("#minimizeButton");
 const maximizeButton = document.querySelector("#maximizeButton");
 const maximizeIcon = document.querySelector("#maximizeIcon");
 const closeButton = document.querySelector("#closeButton");
+const miniModeButton = document.querySelector("#miniModeButton");
 const shortcutHide = document.querySelector("#shortcutHide");
 const shortcutShow = document.querySelector("#shortcutShow");
+const shortcutMini = document.querySelector("#shortcutMini");
 const shortcutQuit = document.querySelector("#shortcutQuit");
 const saveShortcutsButton = document.querySelector("#saveShortcutsButton");
 const settingsStatus = document.querySelector("#settingsStatus");
 const fontSizeSelect = document.querySelector("#fontSizeSelect");
 const themeButtons = document.querySelectorAll("[data-theme]");
+const quickLinkButtons = document.querySelectorAll(".quick-link, .mini-quick-tab");
+
+const DOUYIN_URL = "https://www.douyin.com";
+const MINI_ZOOM = 0.62;
 
 const DEFAULT_SHORTCUTS = {
+  hide: "Ctrl+1",
+  show: "Ctrl+2",
+  mini: "Ctrl+3",
+  quit: "CommandOrControl+Alt+X",
+};
+
+const OLD_DEFAULT_SHORTCUTS = {
   hide: "CommandOrControl+Alt+Q",
   show: "CommandOrControl+Alt+F",
   quit: "CommandOrControl+Alt+X",
@@ -37,9 +51,6 @@ const DEFAULT_SETTINGS = {
   theme: "auto",
   shortcuts: DEFAULT_SHORTCUTS,
 };
-
-let currentUrl = "";
-let settings = loadSettings();
 
 const blessings = [
   "愿你今天摸鱼有分寸，忙碌有回报，心情保持晴朗。",
@@ -52,16 +63,33 @@ const maximizeSvg = '<rect x="4.5" y="4.5" width="9" height="9" rx="1.8"></rect>
 const restoreSvg =
   '<rect x="6" y="4" width="8" height="8" rx="1.5"></rect><path d="M4 6.5v5c0 1 .8 1.8 1.8 1.8h5"></path>';
 
+let currentUrl = "";
+let isMiniMode = false;
+let settings = loadSettings();
+
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem("fishDeskSettings") || "{}");
+    const savedShortcuts = saved.shortcuts || {};
+    const shortcuts = {
+      ...DEFAULT_SHORTCUTS,
+      ...savedShortcuts,
+    };
+
+    if (!savedShortcuts.hide || savedShortcuts.hide === OLD_DEFAULT_SHORTCUTS.hide) {
+      shortcuts.hide = DEFAULT_SHORTCUTS.hide;
+    }
+
+    if (!savedShortcuts.show || savedShortcuts.show === OLD_DEFAULT_SHORTCUTS.show) {
+      shortcuts.show = DEFAULT_SHORTCUTS.show;
+    }
+
+    if (!savedShortcuts.mini) shortcuts.mini = DEFAULT_SHORTCUTS.mini;
+
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
-      shortcuts: {
-        ...DEFAULT_SHORTCUTS,
-        ...(saved.shortcuts || {}),
-      },
+      shortcuts,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -81,9 +109,69 @@ function normalizeTarget(rawValue) {
 }
 
 function setActiveLink(url) {
-  document.querySelectorAll(".quick-link").forEach((button) => {
+  quickLinkButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.url === url);
   });
+}
+
+function syncOpacityControls(value) {
+  const opacityPercent = String(value);
+
+  if (opacitySlider && opacitySlider.value !== opacityPercent) {
+    opacitySlider.value = opacityPercent;
+  }
+
+  if (miniOpacitySlider && miniOpacitySlider.value !== opacityPercent) {
+    miniOpacitySlider.value = opacityPercent;
+  }
+
+  if (opacityValue) opacityValue.textContent = `${opacityPercent}%`;
+}
+
+async function setWindowOpacityFromControl(value) {
+  const safeValue = Math.min(100, Math.max(35, Number(value) || 92));
+  syncOpacityControls(safeValue);
+  await window.fishDesk.setOpacity(safeValue / 100);
+}
+
+function applyWebviewZoom() {
+  if (!contentView || !contentView.getWebContentsId) return;
+
+  try {
+    contentView.setZoomFactor(isMiniMode ? MINI_ZOOM : 1);
+  } catch {
+    contentView.addEventListener(
+      "dom-ready",
+      () => {
+        try {
+          contentView.setZoomFactor(isMiniMode ? MINI_ZOOM : 1);
+        } catch {
+          // Webview may not be ready yet on first load.
+        }
+      },
+      { once: true }
+    );
+  }
+}
+
+function renderMiniMode() {
+  document.body.classList.toggle("mini-mode", isMiniMode);
+  if (!miniModeButton) return;
+
+  miniModeButton.textContent = isMiniMode ? "返回正常" : "小窗模式";
+  miniModeButton.setAttribute("aria-pressed", String(isMiniMode));
+  miniModeButton.title = isMiniMode ? "恢复正常窗口" : "切换为小窗播放";
+}
+
+async function setMiniMode(enabled) {
+  const nextState = await window.fishDesk.setMiniMode(Boolean(enabled));
+  isMiniMode = Boolean(nextState);
+  renderMiniMode();
+  applyWebviewZoom();
+}
+
+function toggleMiniMode() {
+  setMiniMode(!isMiniMode);
 }
 
 function loadUrl(url) {
@@ -94,6 +182,7 @@ function loadUrl(url) {
   homeCard.hidden = true;
   contentView.src = currentUrl;
   setActiveLink(currentUrl);
+  applyWebviewZoom();
 }
 
 function showHome() {
@@ -155,12 +244,13 @@ function applyTheme(theme) {
 }
 
 function renderShortcutHelp() {
-  shortcutHelp.textContent = `隐藏快捷键：${settings.shortcuts.hide}；恢复：${settings.shortcuts.show}；退出：${settings.shortcuts.quit}。`;
+  shortcutHelp.textContent = `隐藏：${settings.shortcuts.hide}；显示：${settings.shortcuts.show}；小窗：${settings.shortcuts.mini}；退出：${settings.shortcuts.quit}。`;
 }
 
 function fillSettingsForm() {
   shortcutHide.value = settings.shortcuts.hide;
   shortcutShow.value = settings.shortcuts.show;
+  if (shortcutMini) shortcutMini.value = settings.shortcuts.mini;
   shortcutQuit.value = settings.shortcuts.quit;
   fontSizeSelect.value = settings.fontSize;
   renderShortcutHelp();
@@ -179,16 +269,20 @@ function updateMaximizeButton(isExpanded) {
   maximizeButton.classList.toggle("is-restore", isExpanded);
 }
 
-document.querySelectorAll(".quick-link, .home-actions button").forEach((button) => {
+quickLinkButtons.forEach((button) => {
   button.addEventListener("click", () => {
     loadUrl(button.dataset.url);
   });
 });
 
-opacitySlider.addEventListener("input", async () => {
-  const opacity = Number(opacitySlider.value) / 100;
-  opacityValue.textContent = `${opacitySlider.value}%`;
-  await window.fishDesk.setOpacity(opacity);
+miniModeButton?.addEventListener("click", toggleMiniMode);
+
+opacitySlider?.addEventListener("input", () => {
+  setWindowOpacityFromControl(opacitySlider.value);
+});
+
+miniOpacitySlider?.addEventListener("input", () => {
+  setWindowOpacityFromControl(miniOpacitySlider.value);
 });
 
 toggleSidebarButton.addEventListener("click", () => {
@@ -226,15 +320,23 @@ saveShortcutsButton.addEventListener("click", async () => {
   const nextShortcuts = {
     hide: shortcutHide.value.trim() || DEFAULT_SHORTCUTS.hide,
     show: shortcutShow.value.trim() || DEFAULT_SHORTCUTS.show,
+    mini: shortcutMini?.value.trim() || settings.shortcuts.mini || DEFAULT_SHORTCUTS.mini,
     quit: shortcutQuit.value.trim() || DEFAULT_SHORTCUTS.quit,
   };
 
-  settingsStatus.textContent = "正在保存快捷键...";
-  const registeredShortcuts = await window.fishDesk.updateShortcuts(nextShortcuts);
-  settings.shortcuts = registeredShortcuts || nextShortcuts;
-  saveSettings();
-  fillSettingsForm();
-  settingsStatus.textContent = "快捷键已保存，若冲突会自动回退到默认组合。";
+  try {
+    settingsStatus.textContent = "正在保存快捷键...";
+    const registeredShortcuts = await window.fishDesk.updateShortcuts(nextShortcuts);
+    settings.shortcuts = {
+      ...DEFAULT_SHORTCUTS,
+      ...(registeredShortcuts || nextShortcuts),
+    };
+    saveSettings();
+    fillSettingsForm();
+    settingsStatus.textContent = `快捷键已保存：隐藏 ${settings.shortcuts.hide}，显示 ${settings.shortcuts.show}，小窗 ${settings.shortcuts.mini}。`;
+  } catch (error) {
+    settingsStatus.textContent = `保存失败：${error?.message || "请检查快捷键格式"}`;
+  }
 });
 
 minimizeButton.addEventListener("click", () => {
@@ -277,13 +379,39 @@ contentView.addEventListener("did-fail-load", () => {
 
 contentView.addEventListener("dom-ready", () => {
   fallbackNotice.hidden = true;
+  applyWebviewZoom();
 });
 
 window.addEventListener("keydown", (event) => {
+  if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+    if (event.key === "1") {
+      event.preventDefault();
+      window.fishDesk.hide();
+      return;
+    }
+
+    if (event.key === "2") {
+      event.preventDefault();
+      window.fishDesk.show();
+      return;
+    }
+
+    if (event.key === "3") {
+      event.preventDefault();
+      toggleMiniMode();
+      return;
+    }
+  }
+
   if (event.key !== "Escape") return;
 
   if (!settingsPanel.hidden) {
     closeSettings();
+    return;
+  }
+
+  if (isMiniMode) {
+    setMiniMode(false);
     return;
   }
 
@@ -294,12 +422,25 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
   if (settings.theme === "auto") applyTheme("auto");
 });
 
+window.fishDesk.onMiniModeChanged?.((state) => {
+  isMiniMode = Boolean(state?.isMiniMode);
+  renderMiniMode();
+  applyWebviewZoom();
+});
+
 window.fishDesk.onWindowStateChanged?.((state) => {
   updateMaximizeButton(Boolean(state?.isFullScreen || state?.isMaximized));
+  if (typeof state?.isMiniMode === "boolean") {
+    isMiniMode = state.isMiniMode;
+    renderMiniMode();
+    applyWebviewZoom();
+  }
 });
 
 renderToday();
 applySettings();
-window.fishDesk.setOpacity(Number(opacitySlider.value) / 100);
+renderMiniMode();
+syncOpacityControls(opacitySlider?.value || miniOpacitySlider?.value || 92);
+window.fishDesk.setOpacity(Number(opacitySlider?.value || miniOpacitySlider?.value || 92) / 100);
 window.fishDesk.updateShortcuts(settings.shortcuts);
 showHome();

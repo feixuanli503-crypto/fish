@@ -1,17 +1,59 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen } = require("electron");
+const fs = require("fs");
 const path = require("path");
+
+const userDataPath = path.join(__dirname, "..", ".electron-user-data");
+const cachePath = path.join(userDataPath, "cache");
+
+fs.mkdirSync(cachePath, { recursive: true });
+app.setPath("userData", userDataPath);
+app.commandLine.appendSwitch("disk-cache-dir", cachePath);
+app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
 
 let mainWindow;
 let lastWindowBounds;
+let normalWindowBounds;
+let isMiniMode = false;
 let windowOpacity = 0.92;
 
 const DEFAULT_SHORTCUTS = {
-  hide: "CommandOrControl+Alt+Q",
-  show: "CommandOrControl+Alt+F",
+  hide: "Ctrl+1",
+  show: "Ctrl+2",
+  mini: "Ctrl+3",
   quit: "CommandOrControl+Alt+X",
 };
 
 let currentShortcuts = { ...DEFAULT_SHORTCUTS };
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+function normalizeShortcut(shortcut, fallback) {
+  const rawShortcut = String(shortcut || fallback || "").trim();
+  if (!rawShortcut) return fallback;
+
+  return rawShortcut
+    .split("+")
+    .map((part) => {
+      const token = part.trim();
+      const lowerToken = token.toLowerCase();
+
+      if (lowerToken === "ctrl" || lowerToken === "control") return "CommandOrControl";
+      if (lowerToken === "cmd" || lowerToken === "command") return "Command";
+      if (lowerToken === "cmdorctrl" || lowerToken === "commandorcontrol") {
+        return "CommandOrControl";
+      }
+      if (lowerToken === "alt" || lowerToken === "option") return "Alt";
+      if (lowerToken === "shift") return "Shift";
+      if (lowerToken === "super" || lowerToken === "meta") return "Super";
+
+      return token.length === 1 ? token.toUpperCase() : token;
+    })
+    .join("+");
+}
 
 function sendWindowState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -19,12 +61,14 @@ function sendWindowState() {
   mainWindow.webContents.send("window:state-changed", {
     isFullScreen: mainWindow.isFullScreen(),
     isMaximized: mainWindow.isMaximized(),
+    isMiniMode,
   });
 }
 
 function rememberWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isFullScreen() || mainWindow.isMaximized() || mainWindow.isMinimized()) return;
+  if (isMiniMode) return;
   lastWindowBounds = mainWindow.getBounds();
 }
 
@@ -56,6 +100,11 @@ function animateWindowOpacity(from, to, onComplete) {
 }
 
 function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    showWindow();
+    return mainWindow;
+  }
+
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -107,6 +156,12 @@ function createWindow() {
     animateWindowOpacity(0, windowOpacity);
     sendWindowState();
   });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+
+  return mainWindow;
 }
 
 function stealthHide() {
@@ -130,12 +185,62 @@ function showWindow() {
   sendWindowState();
 }
 
+function hideAllWindows() {
+  stealthHide();
+}
+
+function showAllWindows() {
+  showWindow();
+}
+
+function setMiniMode(enabled) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (enabled === isMiniMode) return isMiniMode;
+
+  if (enabled) {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+
+    normalWindowBounds = mainWindow.getBounds();
+    const display = screen.getDisplayMatching(normalWindowBounds);
+    const miniWidth = 520;
+    const miniHeight = 360;
+    const x = Math.min(
+      Math.max(display.workArea.x, normalWindowBounds.x + normalWindowBounds.width - miniWidth),
+      display.workArea.x + display.workArea.width - miniWidth
+    );
+    const y = Math.min(
+      Math.max(display.workArea.y, normalWindowBounds.y),
+      display.workArea.y + display.workArea.height - miniHeight
+    );
+
+    mainWindow.setMinimumSize(360, 240);
+    mainWindow.setAlwaysOnTop(true, "floating");
+    mainWindow.setBounds({ x, y, width: miniWidth, height: miniHeight }, true);
+    isMiniMode = true;
+  } else {
+    isMiniMode = false;
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setMinimumSize(920, 620);
+    if (normalWindowBounds) mainWindow.setBounds(normalWindowBounds, true);
+  }
+
+  mainWindow.webContents.send("window:mini-mode-changed", { isMiniMode });
+  sendWindowState();
+  return isMiniMode;
+}
+
+function toggleMiniMode() {
+  return setMiniMode(!isMiniMode);
+}
+
 function registerShortcuts() {
   globalShortcut.unregisterAll();
 
   const shortcutActions = {
-    hide: stealthHide,
-    show: showWindow,
+    hide: hideAllWindows,
+    show: showAllWindows,
+    mini: toggleMiniMode,
     quit: () => {
       app.isQuitting = true;
       app.quit();
@@ -144,6 +249,8 @@ function registerShortcuts() {
 
   Object.entries(shortcutActions).forEach(([key, action]) => {
     const accelerator = currentShortcuts[key] || DEFAULT_SHORTCUTS[key];
+    if (!accelerator) return;
+
     const registered = globalShortcut.register(accelerator, action);
 
     if (!registered && accelerator !== DEFAULT_SHORTCUTS[key]) {
@@ -155,9 +262,10 @@ function registerShortcuts() {
 
 function updateShortcuts(nextShortcuts = {}) {
   currentShortcuts = {
-    hide: String(nextShortcuts.hide || DEFAULT_SHORTCUTS.hide).trim(),
-    show: String(nextShortcuts.show || DEFAULT_SHORTCUTS.show).trim(),
-    quit: String(nextShortcuts.quit || DEFAULT_SHORTCUTS.quit).trim(),
+    hide: normalizeShortcut(nextShortcuts.hide, DEFAULT_SHORTCUTS.hide),
+    show: normalizeShortcut(nextShortcuts.show, DEFAULT_SHORTCUTS.show),
+    mini: normalizeShortcut(nextShortcuts.mini, DEFAULT_SHORTCUTS.mini),
+    quit: normalizeShortcut(nextShortcuts.quit, DEFAULT_SHORTCUTS.quit),
   };
   registerShortcuts();
   return currentShortcuts;
@@ -167,8 +275,16 @@ app.whenReady().then(() => {
   createWindow();
   registerShortcuts();
 
+  app.on("second-instance", () => {
+    showWindow();
+  });
+
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow();
+      return;
+    }
+
     showWindow();
   });
 });
@@ -202,6 +318,14 @@ ipcMain.handle("window:show", () => {
 ipcMain.handle("window:quit", () => {
   app.isQuitting = true;
   app.quit();
+});
+
+ipcMain.handle("mini:toggle", () => {
+  return toggleMiniMode();
+});
+
+ipcMain.handle("mini:set-mode", (_event, enabled) => {
+  return setMiniMode(Boolean(enabled));
 });
 
 ipcMain.handle("window:toggle-full-screen", () => {

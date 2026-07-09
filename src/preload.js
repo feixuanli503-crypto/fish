@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld("fishDesk", {
   setOpacity: (opacity) => ipcRenderer.invoke("window:set-opacity", opacity),
   openExternal: (url) => ipcRenderer.invoke("open:external", url),
   updateShortcuts: (shortcuts) => ipcRenderer.invoke("shortcuts:update", shortcuts),
+  toggleMini: () => ipcRenderer.invoke("mini:toggle"),
+  setMiniMode: (enabled) => ipcRenderer.invoke("mini:set-mode", enabled),
+  onMiniModeChanged: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("window:mini-mode-changed", listener);
+    return () => ipcRenderer.removeListener("window:mini-mode-changed", listener);
+  },
   onWindowStateChanged: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on("window:state-changed", listener);

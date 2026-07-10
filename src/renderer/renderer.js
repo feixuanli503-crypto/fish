@@ -28,22 +28,29 @@ const saveShortcutsButton = document.querySelector("#saveShortcutsButton");
 const settingsStatus = document.querySelector("#settingsStatus");
 const fontSizeSelect = document.querySelector("#fontSizeSelect");
 const themeButtons = document.querySelectorAll("[data-theme]");
-const quickLinkButtons = document.querySelectorAll(".quick-link, .mini-quick-tab");
+const quickLinkButtons = document.querySelectorAll(".quick-link, .mini-quick-tab, .home-action-card");
 
 const DOUYIN_URL = "https://www.douyin.com";
+const BROWSER_ZOOM = 0.86;
 const MINI_ZOOM = 0.62;
 
 const DEFAULT_SHORTCUTS = {
-  hide: "Ctrl+1",
-  show: "Ctrl+2",
+  hide: "Alt+1",
+  show: "Alt+2",
   mini: "Ctrl+3",
-  quit: "CommandOrControl+Alt+X",
+  quit: "Alt+`",
 };
 
 const OLD_DEFAULT_SHORTCUTS = {
   hide: "CommandOrControl+Alt+Q",
   show: "CommandOrControl+Alt+F",
   quit: "CommandOrControl+Alt+X",
+};
+
+const LEGACY_DEFAULT_SHORTCUTS = {
+  hide: ["Ctrl+1", OLD_DEFAULT_SHORTCUTS.hide],
+  show: ["Ctrl+2", OLD_DEFAULT_SHORTCUTS.show],
+  quit: ["Ctrl+Alt+X", OLD_DEFAULT_SHORTCUTS.quit],
 };
 
 const DEFAULT_SETTINGS = {
@@ -76,12 +83,16 @@ function loadSettings() {
       ...savedShortcuts,
     };
 
-    if (!savedShortcuts.hide || savedShortcuts.hide === OLD_DEFAULT_SHORTCUTS.hide) {
+    if (!savedShortcuts.hide || LEGACY_DEFAULT_SHORTCUTS.hide.includes(savedShortcuts.hide)) {
       shortcuts.hide = DEFAULT_SHORTCUTS.hide;
     }
 
-    if (!savedShortcuts.show || savedShortcuts.show === OLD_DEFAULT_SHORTCUTS.show) {
+    if (!savedShortcuts.show || LEGACY_DEFAULT_SHORTCUTS.show.includes(savedShortcuts.show)) {
       shortcuts.show = DEFAULT_SHORTCUTS.show;
+    }
+
+    if (!savedShortcuts.quit || LEGACY_DEFAULT_SHORTCUTS.quit.includes(savedShortcuts.quit)) {
+      shortcuts.quit = DEFAULT_SHORTCUTS.quit;
     }
 
     if (!savedShortcuts.mini) shortcuts.mini = DEFAULT_SHORTCUTS.mini;
@@ -137,14 +148,16 @@ async function setWindowOpacityFromControl(value) {
 function applyWebviewZoom() {
   if (!contentView || !contentView.getWebContentsId) return;
 
+  const zoomFactor = isMiniMode ? MINI_ZOOM : BROWSER_ZOOM;
+
   try {
-    contentView.setZoomFactor(isMiniMode ? MINI_ZOOM : 1);
+    contentView.setZoomFactor(zoomFactor);
   } catch {
     contentView.addEventListener(
       "dom-ready",
       () => {
         try {
-          contentView.setZoomFactor(isMiniMode ? MINI_ZOOM : 1);
+          contentView.setZoomFactor(zoomFactor);
         } catch {
           // Webview may not be ready yet on first load.
         }
@@ -158,8 +171,8 @@ function renderMiniMode() {
   document.body.classList.toggle("mini-mode", isMiniMode);
   if (!miniModeButton) return;
 
-  miniModeButton.textContent = isMiniMode ? "返回正常" : "小窗模式";
   miniModeButton.setAttribute("aria-pressed", String(isMiniMode));
+  miniModeButton.setAttribute("aria-label", isMiniMode ? "返回正常窗口" : "切换小窗模式");
   miniModeButton.title = isMiniMode ? "恢复正常窗口" : "切换为小窗播放";
 }
 
@@ -178,6 +191,7 @@ function loadUrl(url) {
   currentUrl = normalizeTarget(url);
   pageTitle.textContent = currentUrl;
   fallbackNotice.hidden = true;
+  document.body.classList.add("is-browsing");
   browserCard.classList.remove("is-home");
   homeCard.hidden = true;
   contentView.src = currentUrl;
@@ -189,6 +203,7 @@ function showHome() {
   currentUrl = "";
   pageTitle.textContent = "首页";
   fallbackNotice.hidden = true;
+  document.body.classList.remove("is-browsing");
   browserCard.classList.add("is-home");
   homeCard.hidden = false;
   contentView.removeAttribute("src");
@@ -244,7 +259,7 @@ function applyTheme(theme) {
 }
 
 function renderShortcutHelp() {
-  shortcutHelp.textContent = `隐藏：${settings.shortcuts.hide}；显示：${settings.shortcuts.show}；小窗：${settings.shortcuts.mini}；退出：${settings.shortcuts.quit}。`;
+  shortcutHelp.textContent = "\u9690\u85cf\uff1aAlt+1\uff1b\u663e\u793a\uff1aAlt+2\uff1b\u9000\u51fa\uff1aAlt+\u00b7\u3002";
 }
 
 function fillSettingsForm() {
@@ -333,7 +348,7 @@ saveShortcutsButton.addEventListener("click", async () => {
     };
     saveSettings();
     fillSettingsForm();
-    settingsStatus.textContent = `快捷键已保存：隐藏 ${settings.shortcuts.hide}，显示 ${settings.shortcuts.show}，小窗 ${settings.shortcuts.mini}。`;
+    settingsStatus.textContent = `快捷键已保存：隐藏 ${settings.shortcuts.hide}，显示 ${settings.shortcuts.show}，退出 ${settings.shortcuts.quit}。`;
   } catch (error) {
     settingsStatus.textContent = `保存失败：${error?.message || "请检查快捷键格式"}`;
   }
@@ -383,7 +398,7 @@ contentView.addEventListener("dom-ready", () => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+  if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
     if (event.key === "1") {
       event.preventDefault();
       window.fishDesk.hide();
@@ -396,9 +411,9 @@ window.addEventListener("keydown", (event) => {
       return;
     }
 
-    if (event.key === "3") {
+    if (event.key === "`" || event.key === "·") {
       event.preventDefault();
-      toggleMiniMode();
+      window.fishDesk.quit();
       return;
     }
   }

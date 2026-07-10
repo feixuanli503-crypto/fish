@@ -22,6 +22,13 @@
               <path d="M9 2.7v2M9 13.3v2M4.6 4.6 6 6M12 12l1.4 1.4M2.7 9h2M13.3 9h2M4.6 13.4 6 12M12 6l1.4-1.4"></path>
             </svg>
           </button>
+          <button class="tool-button mini-mode-button" id="miniModeButton" type="button" aria-label="切换小窗模式" aria-pressed="false" title="切换为小窗播放">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="3.3" y="4.2" width="13.4" height="10.2" rx="2.4"></rect>
+              <path d="M11.8 10.4h5.4c.8 0 1.4.6 1.4 1.4v3.4c0 .8-.6 1.4-1.4 1.4h-5.4c-.8 0-1.4-.6-1.4-1.4v-3.4c0-.8.6-1.4 1.4-1.4Z"></path>
+              <path d="m13 13.5 1.2 1.2 2-2.4"></path>
+            </svg>
+          </button>
         </div>
 
         <nav class="mini-quick-tabs" id="miniQuickTabs" aria-label="小窗快捷操作">
@@ -30,6 +37,8 @@
           <button class="mini-quick-tab" data-url="https://www.qidian.com" type="button">小说</button>
           <button class="mini-quick-tab" data-url="https://www.baidu.com" type="button">上网</button>
         </nav>
+
+        <div class="mini-drag-spacer" aria-hidden="true"></div>
 
         <div class="toolbar-right">
           <button class="window-button" id="minimizeButton" type="button" aria-label="最小化" title="最小化">
@@ -54,28 +63,54 @@
         <aside class="sidebar" aria-label="摸鱼助手导航">
           <nav class="quick-links" aria-label="快捷入口">
             <button class="quick-link" data-url="https://www.douyin.com" type="button">
-              <span class="icon">D</span>
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M10.4 7.8v6.5a3.2 3.2 0 1 1-3.2-3.2"></path>
+                  <path d="M10.4 7.8c1.2 2.5 3 3.8 5.4 4"></path>
+                  <path d="M15.8 4.8v7"></path>
+                </svg>
+              </span>
               <span class="quick-copy">
                 <strong>抖音</strong>
                 <small>正常打开后可切小窗</small>
               </span>
             </button>
             <button class="quick-link" data-url="https://www.xiaohongshu.com" type="button">
-              <span class="icon">R</span>
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <rect x="5" y="5" width="14" height="14" rx="4"></rect>
+                  <path d="M8.5 9.4h7"></path>
+                  <path d="M8.5 13h4.2"></path>
+                  <path d="m15.8 13.2-2.5 3"></path>
+                </svg>
+              </span>
               <span class="quick-copy">
                 <strong>小红书</strong>
                 <small>灵感瀑布流</small>
               </span>
             </button>
             <button class="quick-link" data-url="https://www.qidian.com" type="button">
-              <span class="icon">N</span>
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M5.5 6.2c2.2-.7 4.3-.4 6.5.8 2.2-1.2 4.3-1.5 6.5-.8v12.1c-2.2-.7-4.3-.4-6.5.8-2.2-1.2-4.3-1.5-6.5-.8Z"></path>
+                  <path d="M12 7v12"></path>
+                  <path d="M8 10.2h1.8M14.2 10.2H16"></path>
+                </svg>
+              </span>
               <span class="quick-copy">
                 <strong>小说</strong>
                 <small>沉浸阅读</small>
               </span>
             </button>
             <button class="quick-link" data-url="https://www.baidu.com" type="button">
-              <span class="icon">W</span>
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="5.5"></circle>
+                  <path d="m15.2 15.2 3.3 3.3"></path>
+                  <path d="M8.4 11h5.2"></path>
+                  <path d="M11 8.4v5.2"></path>
+                </svg>
+              </span>
               <span class="quick-copy">
                 <strong>上网</strong>
                 <small>搜索与浏览</small>
@@ -89,7 +124,7 @@
               <strong id="opacityValue">92%</strong>
             </div>
             <input id="opacitySlider" type="range" min="35" max="100" value="92" aria-label="窗口透明度" />
-            <p id="shortcutHelp">隐藏：Ctrl+1；显示：Ctrl+2；小窗：Ctrl+3；退出：Ctrl+Alt+X。</p>
+            <p id="shortcutHelp">隐藏：Alt+1；显示：Alt+2；退出：Alt+·。</p>
           </section>
         </aside>
 
@@ -114,14 +149,83 @@
                   <span>透明度</span>
                   <input id="miniOpacitySlider" type="range" min="35" max="100" value="92" aria-label="小窗透明度" />
                 </label>
-                <button class="mini-mode-button" id="miniModeButton" type="button" aria-pressed="false">小窗模式</button>
               </div>
             </div>
             <section class="home-card" id="homeCard" aria-label="首页">
-              <div class="home-weather">
-                <span class="eyebrow">欢迎回来</span>
-                <h3 id="homeGreeting">下午好，先看看今天，再决定去哪儿。</h3>
-                <p id="homeSummary">你可以从左侧选择入口。打开抖音后，点“小窗模式”即可把窗口和网页内容一起缩小。</p>
+              <div class="home-ambient" aria-hidden="true"></div>
+              <div class="home-content">
+                <div class="home-weather">
+                  <span class="eyebrow">轻量工作台</span>
+                  <h3 id="homeGreeting">下午好，先看看今天，再决定去哪儿。</h3>
+                  <p id="homeSummary">你可以从左侧选择入口。打开抖音后，点“小窗模式”即可把窗口和网页内容一起缩小。</p>
+                </div>
+
+                <div class="home-action-grid" aria-label="快捷入口">
+                  <button class="home-action-card" data-url="https://www.douyin.com" type="button">
+                    <span class="home-action-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M10.4 7.8v6.5a3.2 3.2 0 1 1-3.2-3.2"></path>
+                        <path d="M10.4 7.8c1.2 2.5 3 3.8 5.4 4"></path>
+                        <path d="M15.8 4.8v7"></path>
+                      </svg>
+                    </span>
+                    <strong>抖音</strong>
+                    <small>打开后可切小窗</small>
+                  </button>
+                  <button class="home-action-card" data-url="https://www.xiaohongshu.com" type="button">
+                    <span class="home-action-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="5" y="5" width="14" height="14" rx="4"></rect>
+                        <path d="M8.5 9.4h7"></path>
+                        <path d="M8.5 13h4.2"></path>
+                        <path d="m15.8 13.2-2.5 3"></path>
+                      </svg>
+                    </span>
+                    <strong>小红书</strong>
+                    <small>灵感瀑布流</small>
+                  </button>
+                  <button class="home-action-card" data-url="https://www.qidian.com" type="button">
+                    <span class="home-action-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5.5 6.2c2.2-.7 4.3-.4 6.5.8 2.2-1.2 4.3-1.5 6.5-.8v12.1c-2.2-.7-4.3-.4-6.5.8-2.2-1.2-4.3-1.5-6.5-.8Z"></path>
+                        <path d="M12 7v12"></path>
+                        <path d="M8 10.2h1.8M14.2 10.2H16"></path>
+                      </svg>
+                    </span>
+                    <strong>小说</strong>
+                    <small>沉浸阅读</small>
+                  </button>
+                  <button class="home-action-card" data-url="https://www.baidu.com" type="button">
+                    <span class="home-action-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="11" cy="11" r="5.5"></circle>
+                        <path d="m15.2 15.2 3.3 3.3"></path>
+                        <path d="M8.4 11h5.2"></path>
+                        <path d="M11 8.4v5.2"></path>
+                      </svg>
+                    </span>
+                    <strong>上网</strong>
+                    <small>搜索与浏览</small>
+                  </button>
+                </div>
+
+                <div class="home-status-row" aria-label="快捷状态">
+                  <div class="home-status-card">
+                    <span>隐藏</span>
+                    <strong>Alt+1</strong>
+                    <small>一键收起窗口</small>
+                  </div>
+                  <div class="home-status-card">
+                    <span>显示</span>
+                    <strong>Alt+2</strong>
+                    <small>快速回到前台</small>
+                  </div>
+                  <div class="home-status-card accent">
+                    <span>小窗</span>
+                    <strong>工具栏图标</strong>
+                    <small>轻点切换浮窗</small>
+                  </div>
+                </div>
               </div>
             </section>
             <webview id="contentView" allowpopups partition="persist:fishdesk"></webview>
@@ -163,7 +267,7 @@
             <input id="shortcutQuit" type="text" spellcheck="false" />
           </label>
           <button class="primary-action" id="saveShortcutsButton" type="button">保存快捷键</button>
-          <p class="settings-note" id="settingsStatus">默认隐藏 Ctrl+1，显示 Ctrl+2，小窗 Ctrl+3。</p>
+          <p class="settings-note" id="settingsStatus">默认隐藏 Alt+1，显示 Alt+2，退出 Alt+·。</p>
         </section>
 
         <section class="settings-card">

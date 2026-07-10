@@ -2,7 +2,9 @@ const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen } = require("
 const fs = require("fs");
 const path = require("path");
 
-const userDataPath = path.join(__dirname, "..", ".electron-user-data");
+const userDataPath = app.isPackaged
+  ? path.join(app.getPath("appData"), app.getName())
+  : path.join(__dirname, "..", ".electron-user-data");
 const cachePath = path.join(userDataPath, "cache");
 
 fs.mkdirSync(cachePath, { recursive: true });
@@ -17,10 +19,10 @@ let isMiniMode = false;
 let windowOpacity = 0.92;
 
 const DEFAULT_SHORTCUTS = {
-  hide: "Ctrl+1",
-  show: "Ctrl+2",
+  hide: "Alt+1",
+  show: "Alt+2",
   mini: "Ctrl+3",
-  quit: "CommandOrControl+Alt+X",
+  quit: "Alt+`",
 };
 
 let currentShortcuts = { ...DEFAULT_SHORTCUTS };
@@ -49,6 +51,7 @@ function normalizeShortcut(shortcut, fallback) {
       if (lowerToken === "alt" || lowerToken === "option") return "Alt";
       if (lowerToken === "shift") return "Shift";
       if (lowerToken === "super" || lowerToken === "meta") return "Super";
+      if (lowerToken === "·" || lowerToken === "grave" || lowerToken === "backquote") return "`";
 
       return token.length === 1 ? token.toUpperCase() : token;
     })

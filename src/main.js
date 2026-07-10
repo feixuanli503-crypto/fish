@@ -17,6 +17,18 @@ let lastWindowBounds;
 let normalWindowBounds;
 let isMiniMode = false;
 let windowOpacity = 0.92;
+let isDisguised = false;
+let activeDisguiseMode = null;
+let disguisePollTimer = null;
+let cursorWasInside = false;
+
+const DEFAULT_WINDOW_TITLE = "摸鱼助手";
+const DISGUISE_MODES = new Set(["code", "calendar", "transparent"]);
+let disguiseSettings = {
+  mouseLeaveEnabled: false,
+  mode: "code",
+  autoMute: true,
+};
 
 const DEFAULT_SHORTCUTS = {
   hide: "Alt+1",
@@ -65,7 +77,13 @@ function sendWindowState() {
     isFullScreen: mainWindow.isFullScreen(),
     isMaximized: mainWindow.isMaximized(),
     isMiniMode,
+    isDisguised,
   });
+}
+
+function sendProtectionAudioRequest(action, reason) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send("audio:protection-request", { action, reason });
 }
 
 function rememberWindowBounds() {
@@ -102,6 +120,107 @@ function animateWindowOpacity(from, to, onComplete) {
   }, tickMs);
 }
 
+function exitDisguise({ restoreOpacity = true } = {}) {
+  if (!mainWindow || mainWindow.isDestroyed() || !isDisguised) return false;
+
+  const previousMode = activeDisguiseMode;
+  isDisguised = false;
+  activeDisguiseMode = null;
+  cursorWasInside = false;
+
+  mainWindow.setIgnoreMouseEvents(false);
+  mainWindow.setTitle(DEFAULT_WINDOW_TITLE);
+  mainWindow.webContents.send("disguise:state-changed", {
+    active: false,
+    mode: previousMode,
+  });
+  sendProtectionAudioRequest("restore", "disguise");
+
+  if (previousMode === "transparent" && restoreOpacity) {
+    animateWindowOpacity(0, windowOpacity);
+  }
+
+  sendWindowState();
+  return true;
+}
+
+function enterDisguise(requestedMode = disguiseSettings.mode, source = "manual") {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    !mainWindow.isVisible() ||
+    mainWindow.isMinimized() ||
+    isDisguised
+  ) {
+    return false;
+  }
+
+  const mode = DISGUISE_MODES.has(requestedMode) ? requestedMode : "code";
+  isDisguised = true;
+  activeDisguiseMode = mode;
+
+  mainWindow.setTitle(mode === "calendar" ? "日程安排" : mode === "code" ? "开发计划" : "");
+  mainWindow.webContents.send("disguise:state-changed", {
+    active: true,
+    mode,
+    source,
+  });
+
+  if (disguiseSettings.autoMute) {
+    sendProtectionAudioRequest("mute", "disguise");
+  }
+
+  if (mode === "transparent") {
+    animateWindowOpacity(mainWindow.getOpacity(), 0, () => {
+      if (!mainWindow || mainWindow.isDestroyed() || !isDisguised) return;
+      mainWindow.setIgnoreMouseEvents(true);
+    });
+  }
+
+  sendWindowState();
+  return true;
+}
+
+function configureDisguiseWatcher() {
+  if (disguisePollTimer) {
+    clearInterval(disguisePollTimer);
+    disguisePollTimer = null;
+  }
+
+  cursorWasInside = false;
+  if (!disguiseSettings.mouseLeaveEnabled) return;
+
+  disguisePollTimer = setInterval(() => {
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      !mainWindow.isVisible() ||
+      mainWindow.isMinimized() ||
+      isDisguised
+    ) {
+      return;
+    }
+
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = mainWindow.getBounds();
+    const isInside =
+      cursor.x >= bounds.x &&
+      cursor.x < bounds.x + bounds.width &&
+      cursor.y >= bounds.y &&
+      cursor.y < bounds.y + bounds.height;
+
+    if (isInside) {
+      cursorWasInside = true;
+      return;
+    }
+
+    if (cursorWasInside) {
+      cursorWasInside = false;
+      enterDisguise(disguiseSettings.mode, "mouse-leave");
+    }
+  }, 180);
+}
+
 function createWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     showWindow();
@@ -113,7 +232,7 @@ function createWindow() {
     height: 760,
     minWidth: 920,
     minHeight: 620,
-    title: "摸鱼助手",
+    title: DEFAULT_WINDOW_TITLE,
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
@@ -136,6 +255,7 @@ function createWindow() {
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
     animateWindowOpacity(0, windowOpacity);
+    configureDisguiseWatcher();
     sendWindowState();
   });
 
@@ -157,10 +277,15 @@ function createWindow() {
   mainWindow.on("unmaximize", sendWindowState);
   mainWindow.on("restore", () => {
     animateWindowOpacity(0, windowOpacity);
+    sendProtectionAudioRequest("restore", "hide");
     sendWindowState();
   });
 
   mainWindow.on("closed", () => {
+    if (disguisePollTimer) {
+      clearInterval(disguisePollTimer);
+      disguisePollTimer = null;
+    }
     mainWindow = null;
   });
 
@@ -169,7 +294,9 @@ function createWindow() {
 
 function stealthHide() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  exitDisguise({ restoreOpacity: false });
   rememberWindowBounds();
+  sendProtectionAudioRequest("mute", "hide");
   animateWindowOpacity(mainWindow.getOpacity(), 0, () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.setSkipTaskbar(true);
@@ -179,12 +306,27 @@ function stealthHide() {
 
 function showWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const restoredDisguise = exitDisguise();
   mainWindow.setSkipTaskbar(false);
+
+  if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+    mainWindow.show();
+    mainWindow.focus();
+    if (!restoredDisguise && mainWindow.getOpacity() < windowOpacity) {
+      animateWindowOpacity(mainWindow.getOpacity(), windowOpacity);
+    }
+    sendProtectionAudioRequest("restore", "hide");
+    sendWindowState();
+    return;
+  }
+
   mainWindow.setOpacity(0);
   mainWindow.show();
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.focus();
   animateWindowOpacity(0, windowOpacity);
+  sendProtectionAudioRequest("restore", "hide");
   sendWindowState();
 }
 
@@ -297,12 +439,14 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
+  if (disguisePollTimer) clearInterval(disguisePollTimer);
   globalShortcut.unregisterAll();
 });
 
 ipcMain.handle("window:minimize", () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   rememberWindowBounds();
+  sendProtectionAudioRequest("mute", "hide");
   animateWindowOpacity(mainWindow.getOpacity(), 0, () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.minimize();
@@ -351,8 +495,28 @@ ipcMain.handle("window:toggle-full-screen", () => {
 ipcMain.handle("window:set-opacity", (_event, opacity) => {
   const safeOpacity = Math.min(1, Math.max(0.25, Number(opacity) || 1));
   windowOpacity = safeOpacity;
-  mainWindow?.setOpacity(safeOpacity);
+  if (!(isDisguised && activeDisguiseMode === "transparent")) {
+    mainWindow?.setOpacity(safeOpacity);
+  }
   return safeOpacity;
+});
+
+ipcMain.handle("disguise:update-settings", (_event, nextSettings = {}) => {
+  disguiseSettings = {
+    mouseLeaveEnabled: Boolean(nextSettings.mouseLeaveEnabled),
+    mode: DISGUISE_MODES.has(nextSettings.mode) ? nextSettings.mode : "code",
+    autoMute: nextSettings.autoMute !== false,
+  };
+  configureDisguiseWatcher();
+  return disguiseSettings;
+});
+
+ipcMain.handle("disguise:test", () => {
+  return enterDisguise(disguiseSettings.mode, "manual");
+});
+
+ipcMain.handle("disguise:restore", () => {
+  return exitDisguise();
 });
 
 ipcMain.handle("shortcuts:update", (_event, shortcuts) => {

@@ -238,6 +238,81 @@
       </div>
     </div>
 
+    <section class="disguise-screen" id="disguiseScreen" hidden aria-label="伪装界面">
+      <div class="disguise-topbar">
+        <div>
+          <strong id="disguiseTitle">项目开发计划</strong>
+          <span>工作区 / 2026 Q3</span>
+        </div>
+        <small>按 Alt+2 返回</small>
+      </div>
+
+      <div class="disguise-view code-disguise" data-disguise-view="code">
+        <aside class="code-sidebar">
+          <strong>EXPLORER</strong>
+          <span>▾ src</span>
+          <span class="nested">main.js</span>
+          <span class="nested active">scheduler.js</span>
+          <span class="nested">services.js</span>
+          <span>▸ tests</span>
+          <span>README.md</span>
+        </aside>
+        <div class="code-editor">
+          <div class="code-tabs"><span>scheduler.js</span><span>×</span></div>
+          <pre><code><i>01</i> const scheduleTasks = async (items) => {
+<i>02</i>   const queue = items.filter((item) => item.enabled);
+<i>03</i>
+<i>04</i>   for (const task of queue) {
+<i>05</i>     await task.validate();
+<i>06</i>     await task.execute({ retry: 2 });
+<i>07</i>   }
+<i>08</i>
+<i>09</i>   return queue.length;
+<i>10</i> };
+<i>11</i>
+<i>12</i> module.exports = { scheduleTasks };</code></pre>
+        </div>
+        <aside class="code-outline">
+          <strong>OUTLINE</strong>
+          <span>scheduleTasks</span>
+          <span>queue</span>
+          <span>task.validate</span>
+          <span>task.execute</span>
+        </aside>
+      </div>
+
+      <div class="disguise-view calendar-disguise" data-disguise-view="calendar">
+        <aside class="calendar-sidebar">
+          <div class="calendar-month" id="disguiseCalendarMonth">七月 2026</div>
+          <div class="mini-calendar">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+            <b>6</b><b>7</b><b>8</b><b>9</b><b class="today">10</b><b>11</b><b>12</b>
+            <b>13</b><b>14</b><b>15</b><b>16</b><b>17</b><b>18</b><b>19</b>
+          </div>
+          <div class="calendar-list">
+            <span><i class="blue"></i>工作安排</span>
+            <span><i class="green"></i>项目会议</span>
+            <span><i class="orange"></i>个人提醒</span>
+          </div>
+        </aside>
+        <div class="calendar-main">
+          <div class="calendar-heading">
+            <div>
+              <strong id="disguiseCalendarDate">7月10日 星期五</strong>
+              <span>今日 4 项安排</span>
+            </div>
+            <button type="button" tabindex="-1">今天</button>
+          </div>
+          <div class="schedule-grid">
+            <time>09:00</time><article class="schedule blue"><strong>需求同步</strong><span>产品与研发周会</span></article>
+            <time>11:00</time><article class="schedule green"><strong>代码评审</strong><span>桌面端功能迭代</span></article>
+            <time>14:30</time><article class="schedule orange"><strong>项目排期</strong><span>整理下一阶段任务</span></article>
+            <time>16:00</time><article class="schedule blue"><strong>版本检查</strong><span>验证构建与发布流程</span></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="settings-panel" id="settingsPanel" role="dialog" aria-label="设置界面" hidden>
       <div class="settings-header">
         <div>
@@ -292,6 +367,57 @@
             <button type="button" data-theme="dark">深色</button>
           </div>
           <p class="settings-note">浅色主题使用天空蓝淡渐变，线条保持轻量分区。</p>
+        </section>
+
+        <section class="settings-card">
+          <h3>一键伪装</h3>
+          <label class="toggle-setting">
+            <input id="mouseLeaveDisguise" type="checkbox" />
+            <span>
+              <strong>鼠标移出自动伪装</strong>
+              <small>鼠标先进入窗口，再移出时触发</small>
+            </span>
+          </label>
+          <label>
+            <span>伪装模式</span>
+            <select id="disguiseModeSelect">
+              <option value="code">编程界面</option>
+              <option value="calendar">日历界面</option>
+              <option value="transparent">窗口全透明</option>
+            </select>
+          </label>
+          <label class="toggle-setting">
+            <input id="disguiseAutoMute" type="checkbox" />
+            <span>
+              <strong>伪装时自动静音</strong>
+              <small>恢复伪装后继续原来的声音状态</small>
+            </span>
+          </label>
+          <button class="secondary-action" id="testDisguiseButton" type="button">立即测试伪装</button>
+          <p class="settings-note">进入伪装后可使用 Alt+2 恢复。全透明模式会同时让鼠标穿透窗口。</p>
+        </section>
+
+        <section class="settings-card">
+          <h3>静音保护</h3>
+          <label class="toggle-setting">
+            <input id="muteOnHide" type="checkbox" />
+            <span>
+              <strong>隐藏窗口自动静音</strong>
+              <small>恢复窗口时继续之前的播放状态</small>
+            </span>
+          </label>
+          <label class="toggle-setting">
+            <input id="muteOnHeadphoneDisconnect" type="checkbox" />
+            <span>
+              <strong>耳机断开立即静音</strong>
+              <small>监听系统音频输出设备变化</small>
+            </span>
+          </label>
+          <div class="audio-protection-state">
+            <span id="audioProtectionStatus">声音保护未触发</span>
+            <button id="restoreAudioButton" type="button" hidden>恢复声音</button>
+          </div>
+          <p class="settings-note">耳机检测依赖 Windows 提供的设备变化事件；保护触发后需手动恢复声音。</p>
         </section>
       </div>
     </section>

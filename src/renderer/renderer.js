@@ -29,6 +29,18 @@ const settingsStatus = document.querySelector("#settingsStatus");
 const fontSizeSelect = document.querySelector("#fontSizeSelect");
 const themeButtons = document.querySelectorAll("[data-theme]");
 const quickLinkButtons = document.querySelectorAll(".quick-link, .mini-quick-tab, .home-action-card");
+const disguiseScreen = document.querySelector("#disguiseScreen");
+const disguiseTitle = document.querySelector("#disguiseTitle");
+const disguiseCalendarMonth = document.querySelector("#disguiseCalendarMonth");
+const disguiseCalendarDate = document.querySelector("#disguiseCalendarDate");
+const mouseLeaveDisguise = document.querySelector("#mouseLeaveDisguise");
+const disguiseModeSelect = document.querySelector("#disguiseModeSelect");
+const disguiseAutoMute = document.querySelector("#disguiseAutoMute");
+const testDisguiseButton = document.querySelector("#testDisguiseButton");
+const muteOnHide = document.querySelector("#muteOnHide");
+const muteOnHeadphoneDisconnect = document.querySelector("#muteOnHeadphoneDisconnect");
+const audioProtectionStatus = document.querySelector("#audioProtectionStatus");
+const restoreAudioButton = document.querySelector("#restoreAudioButton");
 
 const DOUYIN_URL = "https://www.douyin.com";
 const BROWSER_ZOOM = 0.86;
@@ -57,6 +69,15 @@ const DEFAULT_SETTINGS = {
   fontSize: "15",
   theme: "auto",
   shortcuts: DEFAULT_SHORTCUTS,
+  disguise: {
+    mouseLeaveEnabled: false,
+    mode: "code",
+    autoMute: true,
+  },
+  muteProtection: {
+    muteOnHide: false,
+    muteOnHeadphoneDisconnect: false,
+  },
 };
 
 const blessings = [
@@ -72,12 +93,18 @@ const restoreSvg =
 
 let currentUrl = "";
 let isMiniMode = false;
+let isDisguiseActive = false;
+let audioWasMutedBeforeProtection = false;
+let audioOutputSnapshot = [];
+const protectionMuteReasons = new Set();
 let settings = loadSettings();
 
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem("fishDeskSettings") || "{}");
     const savedShortcuts = saved.shortcuts || {};
+    const savedDisguise = saved.disguise || {};
+    const savedMuteProtection = saved.muteProtection || {};
     const shortcuts = {
       ...DEFAULT_SHORTCUTS,
       ...savedShortcuts,
@@ -101,6 +128,14 @@ function loadSettings() {
       ...DEFAULT_SETTINGS,
       ...saved,
       shortcuts,
+      disguise: {
+        ...DEFAULT_SETTINGS.disguise,
+        ...savedDisguise,
+      },
+      muteProtection: {
+        ...DEFAULT_SETTINGS.muteProtection,
+        ...savedMuteProtection,
+      },
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -145,6 +180,132 @@ async function setWindowOpacityFromControl(value) {
   await window.fishDesk.setOpacity(safeValue / 100);
 }
 
+function isWebviewMuted() {
+  try {
+    return Boolean(contentView?.isAudioMuted?.());
+  } catch {
+    return false;
+  }
+}
+
+function setWebviewMuted(muted) {
+  try {
+    contentView?.setAudioMuted?.(Boolean(muted));
+  } catch {
+    // The webview can be unavailable while its first page is attaching.
+  }
+}
+
+function renderAudioProtectionStatus(message) {
+  if (!audioProtectionStatus || !restoreAudioButton) return;
+
+  if (message) {
+    audioProtectionStatus.textContent = message;
+  } else if (protectionMuteReasons.has("headphones")) {
+    audioProtectionStatus.textContent = "检测到音频设备断开，已保护静音。";
+  } else if (protectionMuteReasons.size > 0) {
+    audioProtectionStatus.textContent = "声音已由保护功能静音。";
+  } else {
+    audioProtectionStatus.textContent = "声音保护未触发";
+  }
+
+  restoreAudioButton.hidden = protectionMuteReasons.size === 0;
+}
+
+function requestProtectionMute(reason, message) {
+  if (protectionMuteReasons.size === 0) {
+    audioWasMutedBeforeProtection = isWebviewMuted();
+  }
+
+  protectionMuteReasons.add(reason);
+  setWebviewMuted(true);
+  renderAudioProtectionStatus(message);
+}
+
+function releaseProtectionMute(reason) {
+  protectionMuteReasons.delete(reason);
+  if (protectionMuteReasons.size > 0) {
+    renderAudioProtectionStatus();
+    return;
+  }
+
+  if (!audioWasMutedBeforeProtection) {
+    setWebviewMuted(false);
+  }
+  audioWasMutedBeforeProtection = false;
+  renderAudioProtectionStatus();
+}
+
+function restoreAudioManually() {
+  protectionMuteReasons.clear();
+  audioWasMutedBeforeProtection = false;
+  setWebviewMuted(false);
+  renderAudioProtectionStatus("声音已恢复");
+}
+
+function handleProtectionAudioRequest(request = {}) {
+  if (request.action === "mute" && request.reason === "hide") {
+    if (settings.muteProtection.muteOnHide) {
+      requestProtectionMute("hide", "窗口已隐藏，声音已自动静音。");
+    }
+    return;
+  }
+
+  if (request.action === "mute" && request.reason === "disguise") {
+    if (settings.disguise.autoMute) {
+      requestProtectionMute("disguise", "已进入伪装，声音已自动静音。");
+    }
+    return;
+  }
+
+  if (request.action === "restore") {
+    releaseProtectionMute(request.reason);
+  }
+}
+
+async function readAudioOutputSnapshot() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices
+      .filter((device) => device.kind === "audiooutput")
+      .map((device) => ({
+        deviceId: device.deviceId,
+        groupId: device.groupId,
+        label: device.label,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function getAudioDeviceKey(device) {
+  return `${device.deviceId}|${device.groupId}|${device.label}`;
+}
+
+async function refreshAudioOutputSnapshot() {
+  audioOutputSnapshot = await readAudioOutputSnapshot();
+}
+
+async function handleAudioDeviceChange() {
+  const previous = audioOutputSnapshot;
+  const next = await readAudioOutputSnapshot();
+  audioOutputSnapshot = next;
+
+  if (!settings.muteProtection.muteOnHeadphoneDisconnect || previous.length === 0) return;
+
+  const nextKeys = new Set(next.map(getAudioDeviceKey));
+  const removedPhysicalDevice = previous
+    .filter((device) => !["default", "communications"].includes(device.deviceId))
+    .some((device) => !nextKeys.has(getAudioDeviceKey(device)));
+  const outputCountDropped = next.length < previous.length;
+
+  if ((removedPhysicalDevice && next.length <= previous.length) || outputCountDropped) {
+    requestProtectionMute("headphones", "检测到音频设备断开，已立即静音。");
+  }
+}
+
 function applyWebviewZoom() {
   if (!contentView || !contentView.getWebContentsId) return;
 
@@ -174,6 +335,36 @@ function renderMiniMode() {
   miniModeButton.setAttribute("aria-pressed", String(isMiniMode));
   miniModeButton.setAttribute("aria-label", isMiniMode ? "返回正常窗口" : "切换小窗模式");
   miniModeButton.title = isMiniMode ? "恢复正常窗口" : "切换为小窗播放";
+}
+
+function renderDisguiseCalendar() {
+  const now = new Date();
+  const monthText = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+  }).format(now);
+  const dateText = new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(now);
+
+  disguiseCalendarMonth.textContent = monthText;
+  disguiseCalendarDate.textContent = dateText;
+}
+
+function renderDisguiseState(state = {}) {
+  isDisguiseActive = Boolean(state.active);
+  const mode = state.mode || settings.disguise.mode;
+
+  document.body.classList.toggle("disguise-active", isDisguiseActive);
+  disguiseScreen.dataset.mode = mode;
+  disguiseScreen.hidden = !isDisguiseActive || mode === "transparent";
+  disguiseTitle.textContent = mode === "calendar" ? "日程安排" : "项目开发计划";
+
+  if (isDisguiseActive && mode === "calendar") {
+    renderDisguiseCalendar();
+  }
 }
 
 async function setMiniMode(enabled) {
@@ -268,6 +459,11 @@ function fillSettingsForm() {
   if (shortcutMini) shortcutMini.value = settings.shortcuts.mini;
   shortcutQuit.value = settings.shortcuts.quit;
   fontSizeSelect.value = settings.fontSize;
+  mouseLeaveDisguise.checked = settings.disguise.mouseLeaveEnabled;
+  disguiseModeSelect.value = settings.disguise.mode;
+  disguiseAutoMute.checked = settings.disguise.autoMute;
+  muteOnHide.checked = settings.muteProtection.muteOnHide;
+  muteOnHeadphoneDisconnect.checked = settings.muteProtection.muteOnHeadphoneDisconnect;
   renderShortcutHelp();
 }
 
@@ -354,6 +550,49 @@ saveShortcutsButton.addEventListener("click", async () => {
   }
 });
 
+mouseLeaveDisguise.addEventListener("change", async () => {
+  settings.disguise.mouseLeaveEnabled = mouseLeaveDisguise.checked;
+  saveSettings();
+  await window.fishDesk.updateDisguiseSettings(settings.disguise);
+});
+
+disguiseModeSelect.addEventListener("change", async () => {
+  settings.disguise.mode = disguiseModeSelect.value;
+  saveSettings();
+  await window.fishDesk.updateDisguiseSettings(settings.disguise);
+});
+
+disguiseAutoMute.addEventListener("change", async () => {
+  settings.disguise.autoMute = disguiseAutoMute.checked;
+  saveSettings();
+  if (!settings.disguise.autoMute) releaseProtectionMute("disguise");
+  await window.fishDesk.updateDisguiseSettings(settings.disguise);
+});
+
+testDisguiseButton.addEventListener("click", async () => {
+  await window.fishDesk.updateDisguiseSettings(settings.disguise);
+  closeSettings();
+  await window.fishDesk.testDisguise();
+});
+
+muteOnHide.addEventListener("change", () => {
+  settings.muteProtection.muteOnHide = muteOnHide.checked;
+  saveSettings();
+  if (!settings.muteProtection.muteOnHide) releaseProtectionMute("hide");
+});
+
+muteOnHeadphoneDisconnect.addEventListener("change", async () => {
+  settings.muteProtection.muteOnHeadphoneDisconnect = muteOnHeadphoneDisconnect.checked;
+  saveSettings();
+  if (settings.muteProtection.muteOnHeadphoneDisconnect) {
+    await refreshAudioOutputSnapshot();
+  } else {
+    releaseProtectionMute("headphones");
+  }
+});
+
+restoreAudioButton.addEventListener("click", restoreAudioManually);
+
 minimizeButton.addEventListener("click", () => {
   window.fishDesk.minimize();
 });
@@ -395,9 +634,16 @@ contentView.addEventListener("did-fail-load", () => {
 contentView.addEventListener("dom-ready", () => {
   fallbackNotice.hidden = true;
   applyWebviewZoom();
+  if (protectionMuteReasons.size > 0) setWebviewMuted(true);
 });
 
 window.addEventListener("keydown", (event) => {
+  if (isDisguiseActive && event.key === "Escape") {
+    event.preventDefault();
+    window.fishDesk.restoreDisguise();
+    return;
+  }
+
   if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
     if (event.key === "1") {
       event.preventDefault();
@@ -452,10 +698,24 @@ window.fishDesk.onWindowStateChanged?.((state) => {
   }
 });
 
+window.fishDesk.onDisguiseStateChanged?.((state) => {
+  renderDisguiseState(state);
+});
+
+window.fishDesk.onProtectionAudioRequested?.((request) => {
+  handleProtectionAudioRequest(request);
+});
+
+navigator.mediaDevices?.addEventListener?.("devicechange", handleAudioDeviceChange);
+
 renderToday();
 applySettings();
 renderMiniMode();
+renderDisguiseState();
+renderAudioProtectionStatus();
 syncOpacityControls(opacitySlider?.value || miniOpacitySlider?.value || 92);
 window.fishDesk.setOpacity(Number(opacitySlider?.value || miniOpacitySlider?.value || 92) / 100);
 window.fishDesk.updateShortcuts(settings.shortcuts);
+window.fishDesk.updateDisguiseSettings(settings.disguise);
+refreshAudioOutputSnapshot();
 showHome();

@@ -1463,12 +1463,20 @@ body.mini-mode .mini-mode-button svg {
 
 body.mini-mode .mini-quick-tabs {
   display: flex;
-  flex: 0 1 auto;
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+body.mini-mode .mini-quick-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 body.mini-mode .mini-quick-tab {
   flex: 0 0 auto;
+  padding: 0 8px;
 }
 
 body.mini-mode .mini-drag-spacer {
@@ -1504,6 +1512,10 @@ body.mini-mode .browser-card {
   border-radius: 0 0 7px 7px;
 }
 
+body.mini-mode.is-browsing .browser-card {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 body.mini-mode .browser-toolbar {
   min-width: 0;
   padding: 0 8px 0 12px;
@@ -1513,7 +1525,8 @@ body.mini-mode .browser-toolbar {
 }
 
 body.mini-mode .browser-toolbar > span {
-  max-width: 36%;
+  flex: 1 1 auto;
+  max-width: none;
   -webkit-app-region: drag;
 }
 
@@ -1526,8 +1539,12 @@ body.mini-mode .mini-opacity-control {
   display: flex;
 }
 
+body.mini-mode .mini-opacity-control span {
+  display: none;
+}
+
 body.mini-mode .mini-opacity-control input {
-  width: min(120px, 24vw);
+  width: min(96px, 22vw);
 }
 
 body.mini-mode .browser-card.is-home webview {

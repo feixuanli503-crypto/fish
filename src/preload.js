@@ -34,4 +34,9 @@ contextBridge.exposeInMainWorld("fishDesk", {
     ipcRenderer.on("window:state-changed", listener);
     return () => ipcRenderer.removeListener("window:state-changed", listener);
   },
+  onOpacityChanged: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("window:opacity-changed", listener);
+    return () => ipcRenderer.removeListener("window:opacity-changed", listener);
+  },
 });

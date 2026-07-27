@@ -44,7 +44,15 @@ const restoreAudioButton = document.querySelector("#restoreAudioButton");
 
 const DOUYIN_URL = "https://www.douyin.com";
 const BROWSER_ZOOM = 0.86;
-const MINI_ZOOM = 0.62;
+const MINI_ZOOM = 0.55;
+const MINI_REFERENCE_WIDTH = 508;
+const MINI_REFERENCE_HEIGHT = 318;
+const MINI_MIN_ZOOM = 0.34;
+const MINI_MAX_ZOOM = BROWSER_ZOOM;
+const ABORTED_LOAD_ERROR_CODE = -3;
+const DESKTOP_USER_AGENT = navigator.userAgent;
+const MINI_USER_AGENT =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
 
 const DEFAULT_SHORTCUTS = {
   hide: "Alt+1",
@@ -92,10 +100,13 @@ const restoreSvg =
   '<rect x="6" y="4" width="8" height="8" rx="1.5"></rect><path d="M4 6.5v5c0 1 .8 1.8 1.8 1.8h5"></path>';
 
 let currentUrl = "";
+let currentNavigationUrl = "";
+let navigationSequence = 0;
 let isMiniMode = false;
 let isDisguiseActive = false;
 let audioWasMutedBeforeProtection = false;
 let audioOutputSnapshot = [];
+let zoomFrame = 0;
 const protectionMuteReasons = new Set();
 let settings = loadSettings();
 
@@ -306,10 +317,27 @@ async function handleAudioDeviceChange() {
   }
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getMiniZoomFactor() {
+  const rect = contentView?.getBoundingClientRect?.();
+  const width = rect?.width || MINI_REFERENCE_WIDTH;
+  const height = rect?.height || MINI_REFERENCE_HEIGHT;
+  const scale = Math.min(width / MINI_REFERENCE_WIDTH, height / MINI_REFERENCE_HEIGHT);
+
+  return clamp(MINI_ZOOM * scale, MINI_MIN_ZOOM, MINI_MAX_ZOOM);
+}
+
+function getWebviewZoomFactor() {
+  return isMiniMode ? getMiniZoomFactor() : BROWSER_ZOOM;
+}
+
 function applyWebviewZoom() {
   if (!contentView || !contentView.getWebContentsId) return;
 
-  const zoomFactor = isMiniMode ? MINI_ZOOM : BROWSER_ZOOM;
+  const zoomFactor = getWebviewZoomFactor();
 
   try {
     contentView.setZoomFactor(zoomFactor);
@@ -367,11 +395,152 @@ function renderDisguiseState(state = {}) {
   }
 }
 
+function scheduleWebviewZoom() {
+  if (zoomFrame) cancelAnimationFrame(zoomFrame);
+
+  zoomFrame = requestAnimationFrame(() => {
+    zoomFrame = 0;
+    applyWebviewZoom();
+  });
+}
+
+function getWebviewUserAgent() {
+  return isMiniMode ? MINI_USER_AGENT : DESKTOP_USER_AGENT;
+}
+
+function syncWebviewUserAgent() {
+  if (!contentView) return;
+
+  const userAgent = getWebviewUserAgent();
+  contentView.setAttribute("useragent", userAgent);
+
+  try {
+    contentView.setUserAgent?.(userAgent);
+  } catch {
+    // Some webview builds only honor the attribute or loadURL option.
+  }
+}
+
+function getNavigationErrorCode(error) {
+  if (!error) return null;
+  if (typeof error.errno === "number") return error.errno;
+  if (typeof error.errorCode === "number") return error.errorCode;
+
+  const match = String(error.message || error).match(/\((-?\d+)\)/);
+  return match ? Number(match[1]) : null;
+}
+
+function isIgnorableLoadFailure(errorCode, isMainFrame = true) {
+  return Number(errorCode) === ABORTED_LOAD_ERROR_CODE || isMainFrame === false;
+}
+
+function getFailureUrl(event = {}) {
+  return event.validatedURL || event.url || event.srcURL || "";
+}
+
+function trimUrlTrailingSlash(url) {
+  return String(url || "").replace(/\/$/, "");
+}
+
+function isCurrentNavigationFailureUrl(failedUrl) {
+  if (!failedUrl || !currentNavigationUrl) return true;
+
+  try {
+    const failed = new URL(failedUrl);
+    const current = new URL(currentNavigationUrl);
+    const failedPath = trimUrlTrailingSlash(failed.pathname);
+    const currentPath = trimUrlTrailingSlash(current.pathname);
+
+    return (
+      failed.href === current.href ||
+      (failed.origin === current.origin && failedPath === currentPath && failed.search === current.search)
+    );
+  } catch {
+    return trimUrlTrailingSlash(failedUrl) === trimUrlTrailingSlash(currentNavigationUrl);
+  }
+}
+
+function shouldShowLoadFailure(event = {}) {
+  const errorCode = Number(event?.errorCode);
+  const isMainFrame = event?.isMainFrame;
+  if (isIgnorableLoadFailure(errorCode, isMainFrame)) return false;
+
+  if (isMainFrame === true) return true;
+
+  return isCurrentNavigationFailureUrl(getFailureUrl(event));
+}
+
+function applyMiniViewportPatch() {
+  if (!contentView?.executeJavaScript) return;
+
+  const script = `
+    (() => {
+      const styleId = "fishdesk-mini-viewport";
+      const enabled = ${JSON.stringify(isMiniMode)};
+      const existing = document.getElementById(styleId);
+
+      if (!enabled) {
+        existing?.remove();
+        return;
+      }
+
+      let viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) {
+        viewport = document.createElement("meta");
+        viewport.name = "viewport";
+        document.head.appendChild(viewport);
+      }
+      viewport.content = "width=device-width, initial-scale=1, viewport-fit=cover";
+
+      const style = existing || document.createElement("style");
+      style.id = styleId;
+      style.textContent = [
+        "html,body{min-width:0!important;max-width:100vw!important;overflow-x:hidden!important;}",
+        "img,video,canvas,iframe{max-width:100%!important;}",
+        "[style*='min-width']{min-width:0!important;}"
+      ].join("");
+      if (!existing) document.head.appendChild(style);
+    })();
+  `;
+
+  contentView.executeJavaScript(script, false).catch(() => {
+    // Cross-origin pages can reject injection; zoom + mobile UA still apply.
+  });
+}
+
+function navigateWebview(url) {
+  const navigationId = ++navigationSequence;
+  currentNavigationUrl = url;
+  fallbackNotice.hidden = true;
+  syncWebviewUserAgent();
+  scheduleWebviewZoom();
+
+  // Avoid webview.loadURL(): aborted navigations can make Electron print
+  // GUEST_VIEW_MANAGER_CALL ERR_ABORTED noise even when the promise is caught.
+  if (contentView.getAttribute("src") === url) {
+    contentView.removeAttribute("src");
+    requestAnimationFrame(() => {
+      if (navigationId === navigationSequence) {
+        contentView.setAttribute("src", url);
+      }
+    });
+    return;
+  }
+
+  contentView.setAttribute("src", url);
+}
+
 async function setMiniMode(enabled) {
   const nextState = await window.fishDesk.setMiniMode(Boolean(enabled));
   isMiniMode = Boolean(nextState);
   renderMiniMode();
-  applyWebviewZoom();
+  syncWebviewUserAgent();
+  scheduleWebviewZoom();
+  applyMiniViewportPatch();
+
+  if (currentUrl) {
+    void navigateWebview(currentUrl);
+  }
 }
 
 function toggleMiniMode() {
@@ -385,13 +554,14 @@ function loadUrl(url) {
   document.body.classList.add("is-browsing");
   browserCard.classList.remove("is-home");
   homeCard.hidden = true;
-  contentView.src = currentUrl;
+  void navigateWebview(currentUrl);
   setActiveLink(currentUrl);
-  applyWebviewZoom();
 }
 
 function showHome() {
+  navigationSequence += 1;
   currentUrl = "";
+  currentNavigationUrl = "";
   pageTitle.textContent = "首页";
   fallbackNotice.hidden = true;
   document.body.classList.remove("is-browsing");
@@ -450,7 +620,7 @@ function applyTheme(theme) {
 }
 
 function renderShortcutHelp() {
-  shortcutHelp.textContent = "\u9690\u85cf\uff1aAlt+1\uff1b\u663e\u793a\uff1aAlt+2\uff1b\u9000\u51fa\uff1aAlt+\u00b7\u3002";
+  shortcutHelp.textContent = "隐藏：Alt+1；显示：Alt+2；透明度：Alt+←/→；退出：Alt+·。";
 }
 
 function fillSettingsForm() {
@@ -627,15 +797,40 @@ contentView.addEventListener("page-title-updated", (event) => {
   pageTitle.textContent = event.title || currentUrl;
 });
 
-contentView.addEventListener("did-fail-load", () => {
+contentView.addEventListener("did-fail-load", (event) => {
+  if (!shouldShowLoadFailure(event)) return;
+
   fallbackNotice.hidden = false;
+});
+
+contentView.addEventListener("did-fail-provisional-load", (event) => {
+  if (!shouldShowLoadFailure(event)) return;
+
+  fallbackNotice.hidden = false;
+});
+
+contentView.addEventListener("did-finish-load", () => {
+  fallbackNotice.hidden = true;
+});
+
+contentView.addEventListener("did-navigate", (event) => {
+  if (event?.url) currentNavigationUrl = event.url;
+  fallbackNotice.hidden = true;
+});
+
+contentView.addEventListener("did-navigate-in-page", () => {
+  fallbackNotice.hidden = true;
 });
 
 contentView.addEventListener("dom-ready", () => {
   fallbackNotice.hidden = true;
-  applyWebviewZoom();
+  syncWebviewUserAgent();
+  scheduleWebviewZoom();
+  applyMiniViewportPatch();
   if (protectionMuteReasons.size > 0) setWebviewMuted(true);
 });
+
+window.addEventListener("resize", scheduleWebviewZoom);
 
 window.addEventListener("keydown", (event) => {
   if (isDisguiseActive && event.key === "Escape") {
@@ -686,7 +881,7 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
 window.fishDesk.onMiniModeChanged?.((state) => {
   isMiniMode = Boolean(state?.isMiniMode);
   renderMiniMode();
-  applyWebviewZoom();
+  scheduleWebviewZoom();
 });
 
 window.fishDesk.onWindowStateChanged?.((state) => {
@@ -694,8 +889,19 @@ window.fishDesk.onWindowStateChanged?.((state) => {
   if (typeof state?.isMiniMode === "boolean") {
     isMiniMode = state.isMiniMode;
     renderMiniMode();
-    applyWebviewZoom();
+    scheduleWebviewZoom();
   }
+});
+
+window.fishDesk.onOpacityChanged?.((state) => {
+  const opacityPercent = Number(state?.opacityPercent);
+  if (Number.isFinite(opacityPercent)) {
+    syncOpacityControls(opacityPercent);
+    return;
+  }
+
+  const opacity = Number(state?.opacity);
+  if (Number.isFinite(opacity)) syncOpacityControls(Math.round(opacity * 100));
 });
 
 window.fishDesk.onDisguiseStateChanged?.((state) => {

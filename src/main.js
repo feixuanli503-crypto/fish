@@ -6,11 +6,71 @@ const userDataPath = app.isPackaged
   ? path.join(app.getPath("appData"), app.getName())
   : path.join(__dirname, "..", ".electron-user-data");
 const cachePath = path.join(userDataPath, "cache");
+const GUEST_VIEW_MANAGER_CALL = "GUEST_VIEW_MANAGER_CALL";
+const ABORTED_LOAD_ERROR_CODE = -3;
 
 fs.mkdirSync(cachePath, { recursive: true });
 app.setPath("userData", userDataPath);
 app.commandLine.appendSwitch("disk-cache-dir", cachePath);
 app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
+
+function getLogText(value) {
+  if (value instanceof Error) {
+    return [
+      value.name,
+      value.message,
+      value.stack,
+      value.code,
+      value.errno,
+      value.errorCode,
+    ]
+      .filter((part) => part !== undefined && part !== null)
+      .join(" ");
+  }
+
+  if (typeof value === "string") return value;
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isIgnorableGuestViewAbort(args) {
+  const message = args.map(getLogText).join(" ");
+
+  return (
+    message.includes(GUEST_VIEW_MANAGER_CALL) &&
+    (message.includes("ERR_ABORTED") ||
+      message.includes(`(${ABORTED_LOAD_ERROR_CODE})`) ||
+      message.includes(`errno: ${ABORTED_LOAD_ERROR_CODE}`) ||
+      message.includes(`"errno":${ABORTED_LOAD_ERROR_CODE}`) ||
+      message.includes(`errorCode: ${ABORTED_LOAD_ERROR_CODE}`) ||
+      message.includes(`"errorCode":${ABORTED_LOAD_ERROR_CODE}`))
+  );
+}
+
+const originalConsoleError = console.error.bind(console);
+console.error = (...args) => {
+  if (isIgnorableGuestViewAbort(args)) return;
+  originalConsoleError(...args);
+};
+
+const originalStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = (chunk, encoding, callback) => {
+  const text = Buffer.isBuffer(chunk)
+    ? chunk.toString(typeof encoding === "string" ? encoding : "utf8")
+    : String(chunk);
+
+  if (isIgnorableGuestViewAbort([text])) {
+    const done = typeof encoding === "function" ? encoding : callback;
+    if (typeof done === "function") done();
+    return true;
+  }
+
+  return originalStderrWrite(chunk, encoding, callback);
+};
 
 let mainWindow;
 let lastWindowBounds;
@@ -29,6 +89,10 @@ let disguiseSettings = {
   mode: "code",
   autoMute: true,
 };
+
+const OPACITY_MIN = 0.35;
+const OPACITY_MAX = 1;
+const OPACITY_STEP = 0.05;
 
 const DEFAULT_SHORTCUTS = {
   hide: "Alt+1",
@@ -78,6 +142,56 @@ function sendWindowState() {
     isMaximized: mainWindow.isMaximized(),
     isMiniMode,
     isDisguised,
+  });
+}
+
+function getOpacityPercent(opacity = windowOpacity) {
+  return Math.round(opacity * 100);
+}
+
+function sendOpacityState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  mainWindow.webContents.send("window:opacity-changed", {
+    opacity: windowOpacity,
+    opacityPercent: getOpacityPercent(),
+  });
+}
+
+function setWindowOpacity(opacity, { notify = true } = {}) {
+  const safeOpacity = Math.min(OPACITY_MAX, Math.max(OPACITY_MIN, Number(opacity) || windowOpacity));
+  windowOpacity = safeOpacity;
+
+  if (!(isDisguised && activeDisguiseMode === "transparent")) {
+    mainWindow?.setOpacity(safeOpacity);
+  }
+
+  if (notify) sendOpacityState();
+  return safeOpacity;
+}
+
+function adjustWindowOpacity(delta) {
+  return setWindowOpacity(windowOpacity + delta);
+}
+
+function isOpacityShortcutInput(input = {}) {
+  if (input.type !== "keyDown") return false;
+  if (!input.alt || input.control || input.meta || input.shift) return false;
+
+  return ["ArrowLeft", "Left", "ArrowRight", "Right"].includes(input.key);
+}
+
+function handleOpacityShortcut(event, input = {}) {
+  if (!isOpacityShortcutInput(input)) return;
+
+  event.preventDefault();
+  const direction = input.key === "ArrowLeft" || input.key === "Left" ? -1 : 1;
+  adjustWindowOpacity(direction * OPACITY_STEP);
+}
+
+function configureAppScopedShortcuts() {
+  app.on("web-contents-created", (_event, contents) => {
+    contents.on("before-input-event", handleOpacityShortcut);
   });
 }
 
@@ -417,6 +531,7 @@ function updateShortcuts(nextShortcuts = {}) {
 }
 
 app.whenReady().then(() => {
+  configureAppScopedShortcuts();
   createWindow();
   registerShortcuts();
 
@@ -493,12 +608,7 @@ ipcMain.handle("window:toggle-full-screen", () => {
 });
 
 ipcMain.handle("window:set-opacity", (_event, opacity) => {
-  const safeOpacity = Math.min(1, Math.max(0.25, Number(opacity) || 1));
-  windowOpacity = safeOpacity;
-  if (!(isDisguised && activeDisguiseMode === "transparent")) {
-    mainWindow?.setOpacity(safeOpacity);
-  }
-  return safeOpacity;
+  return setWindowOpacity(opacity);
 });
 
 ipcMain.handle("disguise:update-settings", (_event, nextSettings = {}) => {

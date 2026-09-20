@@ -53,6 +53,20 @@ const ABORTED_LOAD_ERROR_CODE = -3;
 const DESKTOP_USER_AGENT = navigator.userAgent;
 const MINI_USER_AGENT =
   "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+// 红果短剧会拒绝真实浏览器以外的 UA（如 Electron），只对标准桌面 Chrome 提供播放器。
+// 因此对其域名伪装为普通桌面 Chrome。
+const SHORT_DRAMA_DOMAINS = ["hongguoduanju.com", "hongguo.com"];
+const SHORT_DRAMA_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
+function isShortDramaUrl(url) {
+  try {
+    const hostname = new URL(String(url || "")).hostname;
+    return SHORT_DRAMA_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
+  } catch {
+    return false;
+  }
+}
 
 const DEFAULT_SHORTCUTS = {
   hide: "Alt+1",
@@ -405,6 +419,8 @@ function scheduleWebviewZoom() {
 }
 
 function getWebviewUserAgent() {
+  // 短剧站点必须用标准桌面 Chrome UA（小窗时也不能切到移动 UA，否则播放器被砍）。
+  if (isShortDramaUrl(currentUrl)) return SHORT_DRAMA_USER_AGENT;
   return isMiniMode ? MINI_USER_AGENT : DESKTOP_USER_AGENT;
 }
 
@@ -505,6 +521,62 @@ function applyMiniViewportPatch() {
 
   contentView.executeJavaScript(script, false).catch(() => {
     // Cross-origin pages can reject injection; zoom + mobile UA still apply.
+  });
+}
+
+// 拦截网页内的原生全屏请求，转成仅在 webview 可视区内的“伪全屏”，
+// 避免短视频/播放器的全屏按钮把整个应用窗口拉成全屏（尤其小窗模式下）。
+function applyFullscreenGuard() {
+  if (!contentView?.executeJavaScript) return;
+
+  const script = `
+    (() => {
+      if (window.__fishdeskFullscreenGuard) return;
+      window.__fishdeskFullscreenGuard = true;
+
+      const styleId = "fishdesk-fs-guard";
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = [
+          ".fishdesk-fs-root{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;z-index:2147483647!important;background:#000!important;}",
+          ".fishdesk-fs-root video,.fishdesk-fs-root .player-area{width:100%!important;height:100%!important;}",
+        ].join("");
+        document.head.appendChild(style);
+      }
+
+      const exitFullscreen = () => document.querySelector(".fishdesk-fs-root.fishdesk-fs-active")?.classList.remove("fishdesk-fs-active");
+
+      Element.prototype.requestFullscreen = function () {
+        exitFullscreen();
+        this.classList.add("fishdesk-fs-root", "fishdesk-fs-active");
+        return Promise.resolve();
+      };
+      if (Element.prototype.webkitRequestFullscreen) {
+        Element.prototype.webkitRequestFullscreen = Element.prototype.requestFullscreen;
+      }
+      if (Element.prototype.msRequestFullscreen) {
+        Element.prototype.msRequestFullscreen = Element.prototype.requestFullscreen;
+      }
+      if (Document.prototype.exitFullscreen) {
+        Document.prototype.exitFullscreen = function () { exitFullscreen(); return Promise.resolve(); };
+      }
+      if (Document.prototype.webkitExitFullscreen) {
+        Document.prototype.webkitExitFullscreen = Document.prototype.exitFullscreen;
+      }
+      Object.defineProperty(document, "fullscreenElement", {
+        get: () => document.querySelector(".fishdesk-fs-active"),
+        configurable: true,
+      });
+      Object.defineProperty(document, "webkitFullscreenElement", {
+        get: () => document.querySelector(".fishdesk-fs-active"),
+        configurable: true,
+      });
+    })();
+  `;
+
+  contentView.executeJavaScript(script, false).catch(() => {
+    // Cross-origin pages can reject injection.
   });
 }
 
@@ -827,6 +899,7 @@ contentView.addEventListener("dom-ready", () => {
   syncWebviewUserAgent();
   scheduleWebviewZoom();
   applyMiniViewportPatch();
+  applyFullscreenGuard();
   if (protectionMuteReasons.size > 0) setWebviewMuted(true);
 });
 

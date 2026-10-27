@@ -53,16 +53,16 @@ const ABORTED_LOAD_ERROR_CODE = -3;
 const DESKTOP_USER_AGENT = navigator.userAgent;
 const MINI_USER_AGENT =
   "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
-// 红果短剧会拒绝真实浏览器以外的 UA（如 Electron），只对标准桌面 Chrome 提供播放器。
-// 因此对其域名伪装为普通桌面 Chrome。
-const SHORT_DRAMA_DOMAINS = ["hongguoduanju.com", "hongguo.com"];
-const SHORT_DRAMA_USER_AGENT =
+// 小红书会按 UA 判断终端：Electron UA 和移动 UA 都会返回“打开 App”引导页，
+// 只有标准桌面 Chrome UA 才会进入 PC 网页版，所以固定伪装成桌面 Chrome。
+const XIAOHONGSHU_DOMAINS = ["xiaohongshu.com"];
+const DESKTOP_CHROME_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
-function isShortDramaUrl(url) {
+function isXiaohongshuUrl(url) {
   try {
     const hostname = new URL(String(url || "")).hostname;
-    return SHORT_DRAMA_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
+    return XIAOHONGSHU_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
   } catch {
     return false;
   }
@@ -419,8 +419,8 @@ function scheduleWebviewZoom() {
 }
 
 function getWebviewUserAgent() {
-  // 短剧站点必须用标准桌面 Chrome UA（小窗时也不能切到移动 UA，否则播放器被砍）。
-  if (isShortDramaUrl(currentUrl)) return SHORT_DRAMA_USER_AGENT;
+  // 小红书在普通和移动 UA 下都会跳“打开 App”，任何模式下都固定用桌面 Chrome UA。
+  if (isXiaohongshuUrl(currentUrl)) return DESKTOP_CHROME_USER_AGENT;
   return isMiniMode ? MINI_USER_AGENT : DESKTOP_USER_AGENT;
 }
 
